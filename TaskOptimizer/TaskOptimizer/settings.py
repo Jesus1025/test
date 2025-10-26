@@ -19,10 +19,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-tu_clave_secreta_aqui'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True # Cambiar a False en producción
+DEBUG = False # Cambiar a False en producción
 
 # En producción, añade tu dominio aquí (ej: ['www.tusitio.com'])
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['.up.railway.app', 'localhost', '127.0.0.1']
 
 
 # Application definition
@@ -104,6 +104,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 # En producción, configurarías STATIC_ROOT
 
 # Default primary key field type
@@ -115,3 +116,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_REDIRECT_URL = '/' # A dónde ir después de iniciar sesión
 LOGOUT_REDIRECT_URL = '/' # A dónde ir después de cerrar sesión
 LOGIN_URL = 'login' # Nombre de la URL de login (definida por django.contrib.auth.urls)
+
+CSRF_TRUSTED_ORIGINS = ['https://*.up.railway.app']
