@@ -16,11 +16,11 @@ from django.utils import timezone
 # IMPORTANTE: Asegúrate de que estos modelos existan en core/models.py
 from .models import Task, UserProfile
 
-# --- CONFIGURACIÓN DE LA API DE GEMINI (SE MANTIENE) ---
+# --- CONFIGURACIÓN DE LA API DE GEMINI ---
 GEMINI_MODEL = 'gemini-2.5-flash-preview-09-2025'
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
-# --- ROL DEL AGENTE DE OPTIMIZACIÓN (SE MANTIENE) ---
+# --- ROL DEL AGENTE DE OPTIMIZACIÓN ---
 SYSTEM_INSTRUCTION_PROMPT = """
 Actúa como un analista de productividad para inferir la carga cognitiva de una nueva tarea y programarla óptimamente en la semana para prevenir el "burnout" del usuario. Tu objetivo principal es programar la tarea en el día que garantice que el esfuerzo acumulado diario no supere el Umbral de Burnout, respetando la jornada del usuario.
 
@@ -62,7 +62,7 @@ JSON OUTPUT SCHEMA:
 }
 """
 
-# --- GeminiAgentService (SE MANTIENE IGUAL) ---
+# --- GeminiAgentService ---
 class GeminiAgentService:
     def __init__(self, system_instruction):
         self.system_instruction = system_instruction
@@ -99,7 +99,7 @@ class GeminiAgentService:
 # Instancia del servicio Gemini
 gemini_agent = GeminiAgentService(SYSTEM_INSTRUCTION_PROMPT)
 
-# --- Vista de Registro (SE MANTIENE) ---
+# --- Vista de Registro ---
 def register(request):
     if request.user.is_authenticated:
         return redirect('home')
@@ -263,7 +263,7 @@ def home(request):
                         day=task_day,
                         time=task_time,
                         duration=inferred_duration,
-                        completed=False  # Asegurar que empiece como no completada
+                        completed=False
                     )
                     message = f"Tarea programada. Razón: {ia_decision.get('reasoning', 'Sin detalles.')}"
                     
@@ -414,7 +414,7 @@ def toggle_task(request, task_id):
     # 3. Cambia el estado de completado
     task.completed = not task.completed
     
-    task.save() # Guarda el cambio en la BD
+    task.save()
     return redirect('home')
 
 # --- VISTA PARA ELIMINAR TAREAS COMPLETADAS ---
@@ -424,7 +424,7 @@ def delete_completed_tasks(request):
     Task.objects.filter(user=request.user, completed=True).delete()
     return redirect('home')
 
-# --- VISTA PARA GUARDAR HORARIO ---
+# --- VISTA CORREGIDA PARA GUARDAR HORARIO ---
 @login_required
 @require_http_methods(["POST"])
 def save_schedule(request):
@@ -436,8 +436,9 @@ def save_schedule(request):
         for i in range(7):
             start_key = f'start_{i}'
             end_key = f'end_{i}'
-            schedule_data[start_key] = request.POST.get(start_key, '00:00')
-            schedule_data[end_key] = request.POST.get(end_key, '00:00')
+            start_time = request.POST.get(start_key, '00:00')
+            end_time = request.POST.get(end_key, '00:00')
+            schedule_data[i] = {'start': start_time, 'end': end_time}
         
         user_profile.set_weekly_schedule(schedule_data)
         
