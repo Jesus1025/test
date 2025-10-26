@@ -11,15 +11,16 @@ from django.contrib.auth.forms import UserCreationForm
 from django.urls import reverse_lazy
 from django.contrib.auth.models import User
 from django.db import models
+from django.utils import timezone
 
 # IMPORTANTE: Asegúrate de que estos modelos existan en core/models.py
-from .models import Task, UserProfile 
+from .models import Task, UserProfile
 
-# --- CONFIGURACIÓN DE LA API DE GEMINI (SE MANTIENE) ---
+# --- CONFIGURACIÓN DE LA API DE GEMINI ---
 GEMINI_MODEL = 'gemini-2.5-flash-preview-09-2025'
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
-# --- ROL DEL AGENTE DE OPTIMIZACIÓN (SE MANTIENE) ---
+# --- ROL DEL AGENTE DE OPTIMIZACIÓN ---
 SYSTEM_INSTRUCTION_PROMPT = """
 Actúa como un analista de productividad para inferir la carga cognitiva de una nueva tarea y programarla óptimamente en la semana para prevenir el "burnout" del usuario. Tu objetivo principal es programar la tarea en el día que garantice que el esfuerzo acumulado diario no supere el Umbral de Burnout, respetando la jornada del usuario.
 
@@ -61,39 +62,58 @@ JSON OUTPUT SCHEMA:
 }
 """
 
-# --- GeminiAgentService (SE MANTIENE IGUAL) ---
+# --- GeminiAgentService ---
 class GeminiAgentService:
     def __init__(self, system_instruction):
         self.system_instruction = system_instruction
-        self.api_key = "AIzaSyDAxQLidBsYbsDr9GlpntgCSpetF-ojwxo" # USA TU API KEY
+        self.api_key = "AIzaSyDAxQLidBsYbsDr9GlpntgCSpetF-ojwxo"
 
     def optimize_task(self, task_text, context_db):
-        full_prompt = context_db; headers = {"Content-Type": "application/json"}
-        payload = {"contents": [{"parts": [{"text": full_prompt}]}], "systemInstruction": {"parts": [{"text": self.system_instruction}]}, "generationConfig": {"responseMimeType": "application/json"},}
+        full_prompt = context_db
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": full_prompt}]}],
+            "systemInstruction": {"parts": [{"text": self.system_instruction}]},
+            "generationConfig": {"responseMimeType": "application/json"},
+        }
         try:
-            response = requests.post(f"{GEMINI_API_URL}?key={self.api_key}", headers=headers, data=json.dumps(payload)); response.raise_for_status(); result = response.json()
-            if not result.get('candidates'): print(f"Error: Respuesta inesperada de la API Gemini: {result}"); return {"error": "API_RESPONSE_ERROR", "reasoning": "La API devolvió una respuesta inesperada."}
-            gemini_output_text = result['candidates'][0]['content']['parts'][0]['text']; optimized_data = json.loads(gemini_output_text); return optimized_data
-        except requests.exceptions.RequestException as e: print(f"Error en la llamada a la API de Gemini: {e}"); return {"error": "API_ERROR", "reasoning": f"No se pudo conectar con el Agente IA. Detalles: {e}"}
-        except json.JSONDecodeError as e: print(f"Error: La IA no devolvió JSON válido: {e}"); return {"error": "INVALID_JSON", "reasoning": "La IA no devolvió la respuesta en el formato JSON esperado."}
-        except Exception as e: print(f"Error inesperado al procesar la respuesta: {e}"); return {"error": "UNKNOWN_ERROR", "reasoning": f"Error inesperado. Detalles: {e}"}
+            response = requests.post(f"{GEMINI_API_URL}?key={self.api_key}", headers=headers, data=json.dumps(payload))
+            response.raise_for_status()
+            result = response.json()
+            if not result.get('candidates'):
+                print(f"Error: Respuesta inesperada de la API Gemini: {result}")
+                return {"error": "API_RESPONSE_ERROR", "reasoning": "La API devolvió una respuesta inesperada."}
+            gemini_output_text = result['candidates'][0]['content']['parts'][0]['text']
+            optimized_data = json.loads(gemini_output_text)
+            return optimized_data
+        except requests.exceptions.RequestException as e:
+            print(f"Error en la llamada a la API de Gemini: {e}")
+            return {"error": "API_ERROR", "reasoning": f"No se pudo conectar con el Agente IA. Detalles: {e}"}
+        except json.JSONDecodeError as e:
+            print(f"Error: La IA no devolvió JSON válido: {e}")
+            return {"error": "INVALID_JSON", "reasoning": "La IA no devolvió la respuesta en el formato JSON esperado."}
+        except Exception as e:
+            print(f"Error inesperado al procesar la respuesta: {e}")
+            return {"error": "UNKNOWN_ERROR", "reasoning": f"Error inesperado. Detalles: {e}"}
 
 # Instancia del servicio Gemini
 gemini_agent = GeminiAgentService(SYSTEM_INSTRUCTION_PROMPT)
 
-# --- Vista de Registro (SE MANTIENE) ---
+# --- Vista de Registro ---
 def register(request):
-    if request.user.is_authenticated: return redirect('home')
+    if request.user.is_authenticated:
+        return redirect('home')
     if request.method == 'POST':
         form = UserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
             UserProfile.objects.get_or_create(user=user)
             return redirect('login')
-    else: form = UserCreationForm()
+    else:
+        form = UserCreationForm()
     return render(request, 'registration/register.html', {'form': form})
 
-# --- FUNCIÓN PARA CALCULAR RACHA (USA BD) ---
+# --- FUNCIÓN PARA CALCULAR RACHA ---
 def calculate_streak(user):
     """Calcula la racha de días consecutivos completando al menos una tarea."""
     today = date.today()
@@ -101,45 +121,96 @@ def calculate_streak(user):
     
     try:
         completed_dates = Task.objects.filter(user=user, completed=True).dates('day', 'day', order='DESC')
-        if not completed_dates: return 0
+        if not completed_dates:
+            return 0
         
-        completed_dates_list = list(completed_dates); last_completed_day = completed_dates_list[0]
+        completed_dates_list = list(completed_dates)
+        last_completed_day = completed_dates_list[0]
         
         if last_completed_day == today:
-            streak = 1; current_date = today - timedelta(days=1)
+            streak = 1
+            current_date = today - timedelta(days=1)
         elif last_completed_day == today - timedelta(days=1):
-            streak = 1; current_date = last_completed_day - timedelta(days=1)
-        else: return 0
+            streak = 1
+            current_date = last_completed_day - timedelta(days=1)
+        else:
+            return 0
 
         for completed_day in completed_dates_list[1:]:
             if completed_day == current_date:
-                streak += 1; current_date -= timedelta(days=1)
-            elif completed_day < current_date: break
-    except Exception as e: print(f"Error al calcular racha: {e}"); return 0
+                streak += 1
+                current_date -= timedelta(days=1)
+            elif completed_day < current_date:
+                break
+    except Exception as e:
+        print(f"Error al calcular racha: {e}")
+        return 0
     return streak
 
 # --- Helper Function: Obtener Contexto para IA desde la BD ---
 def get_context_for_ia_from_db(user, new_task_text):
     """Compila el contexto para la IA consultando la BD para el usuario dado."""
-    today = date.today(); end_date = today + timedelta(days=6)
+    today = date.today()
+    end_date = today + timedelta(days=6)
     
-    try: user_profile, created = UserProfile.objects.get_or_create(user=user); weekly_schedule = user_profile.get_weekly_schedule(); burnout_threshold = user_profile.burnout_threshold
-    except Exception as e: print(f"Error consultando UserProfile: {e}"); weekly_schedule = UserProfile.get_default_schedule(); burnout_threshold = 15
+    try:
+        user_profile, created = UserProfile.objects.get_or_create(user=user)
+        weekly_schedule = user_profile.get_weekly_schedule()
+        burnout_threshold = user_profile.burnout_threshold
+    except Exception as e:
+        print(f"Error consultando UserProfile: {e}")
+        weekly_schedule = UserProfile.get_default_schedule()
+        burnout_threshold = 15
     
     user_tasks = Task.objects.filter(user=user, day__range=[today, end_date], completed=False).order_by('day', 'time')
     
-    weekly_effort_map = {}; weekly_tasks_map = {}
-    for i in range(7):
-        current_day = today + timedelta(days=i); current_day_str = current_day.strftime('%Y-%m-%d'); current_weekday = current_day.weekday()
-        tasks_for_day = [t for t in user_tasks if t.day == current_day]; effort_for_day = sum(t.effort for t in tasks_for_day); weekly_effort_map[current_day_str] = effort_for_day
-        weekly_tasks_map[current_day_str] = [{"text": t.text, "start_time": t.time.strftime('%H:%M') if t.time else 'N/A', "duration": t.duration} for t in tasks_for_day]
-    today_str = today.strftime('%Y-%m-%d'); schedule_context_str = json.dumps(weekly_schedule, indent=2); weekly_effort_map_str = json.dumps(weekly_effort_map, indent=2); weekly_tasks_map_str = json.dumps(weekly_tasks_map, indent=2)
+    weekly_effort_map = {}
+    weekly_tasks_map = {}
     
-    context = { "HORARIO_SEMANAL_USUARIO": schedule_context_str, "FECHA_HOY": today_str, "ESFUERZO_SEMANAL_ACTUAL": weekly_effort_map_str, "TAREAS_PROGRAMADAS_SEMANA": weekly_tasks_map_str, "TEXTO_NUEVA_TAREA": new_task_text }
-    prompt_parts = [ f"1. HORARIO SEMANAL DEL USUARIO (0=Lunes, 6=Domingo): {context['HORARIO_SEMANAL_USUARIO']}", f"2. ESTADO ACTUAL DE LA SEMANA:", f"* FECHA_HOY: {context['FECHA_HOY']}", f"* ESFUERZO_SEMANAL_ACTUAL (Acumulado por día): {context['ESFUERZO_SEMANAL_ACTUAL']}", f"* TAREAS_PROGRAMADAS_SEMANA (JSON): {context['TAREAS_PROGRAMADAS_SEMANA']}", f"3. TAREA A PROGRAMAR:", f"* TEXTO_NUEVA_TAREA: {context['TEXTO_NUEVA_TAREA']}", "Genera la respuesta UNICAMENTE en el formato JSON solicitado." ]
+    for i in range(7):
+        current_day = today + timedelta(days=i)
+        current_day_str = current_day.strftime('%Y-%m-%d')
+        current_weekday = current_day.weekday()
+        
+        tasks_for_day = [t for t in user_tasks if t.day == current_day]
+        effort_for_day = sum(t.effort for t in tasks_for_day)
+        weekly_effort_map[current_day_str] = effort_for_day
+        
+        weekly_tasks_map[current_day_str] = [
+            {
+                "text": t.text,
+                "start_time": t.time.strftime('%H:%M') if t.time else 'N/A',
+                "duration": t.duration
+            } for t in tasks_for_day
+        ]
+    
+    today_str = today.strftime('%Y-%m-%d')
+    schedule_context_str = json.dumps(weekly_schedule, indent=2)
+    weekly_effort_map_str = json.dumps(weekly_effort_map, indent=2)
+    weekly_tasks_map_str = json.dumps(weekly_tasks_map, indent=2)
+    
+    context = {
+        "HORARIO_SEMANAL_USUARIO": schedule_context_str,
+        "FECHA_HOY": today_str,
+        "ESFUERZO_SEMANAL_ACTUAL": weekly_effort_map_str,
+        "TAREAS_PROGRAMADAS_SEMANA": weekly_tasks_map_str,
+        "TEXTO_NUEVA_TAREA": new_task_text
+    }
+    
+    prompt_parts = [
+        f"1. HORARIO SEMANAL DEL USUARIO (0=Lunes, 6=Domingo): {context['HORARIO_SEMANAL_USUARIO']}",
+        f"2. ESTADO ACTUAL DE LA SEMANA:",
+        f"* FECHA_HOY: {context['FECHA_HOY']}",
+        f"* ESFUERZO_SEMANAL_ACTUAL (Acumulado por día): {context['ESFUERZO_SEMANAL_ACTUAL']}",
+        f"* TAREAS_PROGRAMADAS_SEMANA (JSON): {context['TAREAS_PROGRAMADAS_SEMANA']}",
+        f"3. TAREA A PROGRAMAR:",
+        f"* TEXTO_NUEVA_TAREA: {context['TEXTO_NUEVA_TAREA']}",
+        "Genera la respuesta UNICAMENTE en el formato JSON solicitado."
+    ]
+    
     return "\n\n".join(prompt_parts)
 
-# --- VISTA PRINCIPAL (MODIFICADA para usar BD y racha) ---
+# --- VISTA PRINCIPAL ---
 @login_required
 def home(request):
     message = ""
@@ -151,30 +222,62 @@ def home(request):
         if new_task_text:
             context_prompt = get_context_for_ia_from_db(user, new_task_text)
             ia_decision = gemini_agent.optimize_task(new_task_text, context_prompt)
+            
             if ia_decision and "error" not in ia_decision:
                 try:
                     # Extraer y convertir datos de la IA
-                    inferred_effort = int(ia_decision.get('inferred_attributes', {}).get('effort', 1)); inferred_duration = float(ia_decision.get('inferred_attributes', {}).get('duration_hours', 0.5)); recommended_day_str = ia_decision.get('optimization_decision', {}).get('recommended_day'); recommended_time_str = ia_decision.get('optimization_decision', {}).get('recommended_time')
+                    inferred_effort = int(ia_decision.get('inferred_attributes', {}).get('effort', 1))
+                    inferred_duration = float(ia_decision.get('inferred_attributes', {}).get('duration_hours', 0.5))
+                    recommended_day_str = ia_decision.get('optimization_decision', {}).get('recommended_day')
+                    recommended_time_str = ia_decision.get('optimization_decision', {}).get('recommended_time')
                     
                     # Conversión a objetos nativos de Python para el modelo
                     task_day = date.fromisoformat(recommended_day_str) if recommended_day_str else date.today()
-                    task_time = time.fromisoformat(recommended_time_str) if recommended_time_str and recommended_time_str != 'N/A' else None
+                    
+                    task_time = None
+                    if recommended_time_str and recommended_time_str != 'N/A':
+                        try:
+                            task_time = datetime.strptime(recommended_time_str, '%H:%M').time()
+                        except ValueError:
+                            task_time = datetime.strptime('08:00', '%H:%M').time()
 
                     # Crear y guardar la tarea directamente en la BD
-                    Task.objects.create( user=user, text=ia_decision.get('new_task_text', new_task_text), effort=inferred_effort, day=task_day, time=task_time, duration=inferred_duration, completed=False )
+                    Task.objects.create(
+                        user=user,
+                        text=ia_decision.get('new_task_text', new_task_text),
+                        effort=inferred_effort,
+                        day=task_day,
+                        time=task_time,
+                        duration=inferred_duration,
+                        completed=False
+                    )
                     message = f"Tarea programada. Razón: {ia_decision.get('reasoning', 'Sin detalles.')}"
-                except (ValueError, TypeError) as e: message = f"Error al procesar/convertir respuesta de IA: {e}. Respuesta: {ia_decision}"
-                except Exception as e: message = f"Error inesperado al guardar la tarea en BD: {e}"
-            elif ia_decision: message = f"Error de optimización: {ia_decision.get('reasoning', 'Error desconocido.')}"
-            else: message = "Error: No se pudo obtener respuesta del Agente IA."
-        else: message = "Error: El texto de la tarea no puede estar vacío."
+                    
+                except (ValueError, TypeError) as e:
+                    message = f"Error al procesar/convertir respuesta de IA: {e}. Respuesta: {ia_decision}"
+                except Exception as e:
+                    message = f"Error inesperado al guardar la tarea en BD: {e}"
+            elif ia_decision:
+                message = f"Error de optimización: {ia_decision.get('reasoning', 'Error desconocido.')}"
+            else:
+                message = "Error: No se pudo obtener respuesta del Agente IA."
+        else:
+            message = "Error: El texto de la tarea no puede estar vacío."
 
     # --- Lógica GET: Obtener datos, procesar y calcular racha/estrellas ---
-    today_obj = date.today(); today_str = today_obj.strftime('%Y-%m-%d'); today_weekday = today_obj.weekday()
+    today_obj = date.today()
+    today_str = today_obj.strftime('%Y-%m-%d')
+    today_weekday = today_obj.weekday()
     
     # Obtener perfil del usuario
-    try: user_profile = UserProfile.objects.get(user=user); weekly_schedule = user_profile.get_weekly_schedule(); burnout_threshold = user_profile.burnout_threshold
-    except UserProfile.DoesNotExist: user_profile = UserProfile.objects.create(user=user); weekly_schedule = user_profile.get_weekly_schedule(); burnout_threshold = user_profile.burnout_threshold
+    try:
+        user_profile = UserProfile.objects.get(user=user)
+        weekly_schedule = user_profile.get_weekly_schedule()
+        burnout_threshold = user_profile.burnout_threshold
+    except UserProfile.DoesNotExist:
+        user_profile = UserProfile.objects.create(user=user)
+        weekly_schedule = user_profile.get_weekly_schedule()
+        burnout_threshold = user_profile.burnout_threshold
     
     today_schedule = weekly_schedule.get(today_weekday, {'name': 'Día', 'start': '00:00', 'end': '00:00'})
 
@@ -183,20 +286,53 @@ def home(request):
     all_user_tasks = Task.objects.filter(user=user, day__range=[today_obj, end_date]).order_by('day', 'time')
 
     # Procesar tareas para la vista semanal
-    week_view_data = [];
+    week_view_data = []
     for i in range(7):
-        current_date_obj = today_obj + timedelta(days=i); current_date_str = current_date_obj.strftime('%Y-%m-%d'); current_weekday = current_date_obj.weekday()
-        day_schedule = weekly_schedule.get(current_weekday, {'name': 'Día', 'start': '00:00', 'end': '00:00'}); tasks_for_this_day_raw = [t for t in all_user_tasks if t.day == current_date_obj]; processed_tasks = []
+        current_date_obj = today_obj + timedelta(days=i)
+        current_date_str = current_date_obj.strftime('%Y-%m-%d')
+        current_weekday = current_date_obj.weekday()
+        
+        day_schedule = weekly_schedule.get(current_weekday, {'name': 'Día', 'start': '00:00', 'end': '00:00'})
+        tasks_for_this_day_raw = [t for t in all_user_tasks if t.day == current_date_obj]
+        processed_tasks = []
+        
         for task in tasks_for_this_day_raw:
-            start_time_str = task.time.strftime('%H:%M') if task.time else 'N/A'; duration_hours = float(task.duration); end_time_str = "N/A"
+            start_time_str = task.time.strftime('%H:%M') if task.time else 'N/A'
+            duration_hours = float(task.duration)
+            end_time_str = "N/A"
+            
             if task.time:
-                 try: start_dt = datetime.combine(date.today(), task.time); duration_td = timedelta(hours=duration_hours); end_dt = start_dt + duration_td; end_time_str = end_dt.strftime('%H:%M')
-                 except ValueError: pass
-            processed_tasks.append({'id': task.id, 'text': task.text, 'effort': task.effort, 'day': task.day.strftime('%Y-%m-%d'), 'time': start_time_str, 'end_time': end_time_str, 'duration': task.duration, 'completed': task.completed,});
-        effort_for_this_day = sum(t['effort'] for t in processed_tasks if not t['completed']);
-        week_view_data.append({'date_str': current_date_str, 'day_name': day_schedule['name'], 'tasks': processed_tasks, 'is_today': (i == 0), 'accumulated_effort': effort_for_this_day});
+                try:
+                    start_dt = datetime.combine(date.today(), task.time)
+                    duration_td = timedelta(hours=duration_hours)
+                    end_dt = start_dt + duration_td
+                    end_time_str = end_dt.strftime('%H:%M')
+                except ValueError:
+                    pass
 
-    accumulated_effort_today = week_view_data[0]['accumulated_effort']; available_effort_today = max(0, burnout_threshold - accumulated_effort_today)
+            processed_tasks.append({
+                'id': task.id,
+                'text': task.text,
+                'effort': task.effort,
+                'day': task.day.strftime('%Y-%m-%d'),
+                'time': start_time_str,
+                'end_time': end_time_str,
+                'duration': task.duration,
+                'completed': task.completed,
+            })
+        
+        effort_for_this_day = sum(t['effort'] for t in processed_tasks if not t['completed'])
+        
+        week_view_data.append({
+            'date_str': current_date_str,
+            'day_name': day_schedule['name'],
+            'tasks': processed_tasks,
+            'is_today': (i == 0),
+            'accumulated_effort': effort_for_this_day
+        })
+
+    accumulated_effort_today = week_view_data[0]['accumulated_effort']
+    available_effort_today = max(0, burnout_threshold - accumulated_effort_today)
 
     # --- LÓGICA DE RACHA Y PROGRESO ---
     current_streak = calculate_streak(user)
@@ -204,7 +340,10 @@ def home(request):
     # Conteo mensual de tareas
     start_of_month = today_obj.replace(day=1)
     monthly_completed_tasks = Task.objects.filter(
-        user=user, completed=True, day__gte=start_of_month
+        user=user, 
+        completed=True, 
+        day__gte=start_of_month,
+        day__lte=today_obj
     ).count()
 
     MAX_STARS_PER_MONTH = 30
@@ -213,14 +352,20 @@ def home(request):
     is_reward_day = False
     reward_image_url = None
     
-    static_background_url = 'core/images/fondo_racha.png' # Usaremos .png como estándar si no está .jfif
+    static_background_url = 'core/images/fondo_racha.png'
     star_image_base_url = 'core/images/estrella'
 
     context = {
-        'today_date': today_str, 'today_weekday': today_weekday, 'today_schedule': today_schedule,
-        'weekly_schedule': weekly_schedule, 'burnout_threshold': burnout_threshold, 'message': message,
-        'week_view_data': week_view_data, 'accumulated_effort': accumulated_effort_today,
-        'available_effort': available_effort_today, 'user': user,
+        'today_date': today_str,
+        'today_weekday': today_weekday,
+        'today_schedule': today_schedule,
+        'weekly_schedule': weekly_schedule,
+        'burnout_threshold': burnout_threshold,
+        'message': message,
+        'week_view_data': week_view_data,
+        'accumulated_effort': accumulated_effort_today,
+        'available_effort': available_effort_today,
+        'user': user,
         'current_streak': current_streak,
         'monthly_completed_tasks': monthly_completed_tasks,
         'stars_to_show': stars_to_show,
@@ -240,8 +385,9 @@ def toggle_task(request, task_id):
     # Si la tarea se está marcando como COMPLETED (True), actualiza la fecha a HOY
     if not task.completed:
         task.day = date.today()
-        # task.time = timezone.now().time() # Opcional: registrar hora actual
-        
+        # Opcional: registrar hora actual cuando se completa
+        task.time = timezone.now().time()
+    
     task.completed = not task.completed
     task.save()
     return redirect('home')
@@ -253,7 +399,7 @@ def delete_completed_tasks(request):
     Task.objects.filter(user=request.user, completed=True).delete()
     return redirect('home')
 
-# --- VISTA PARA GUARDAR HORARIO ---
+# --- VISTA CORREGIDA PARA GUARDAR HORARIO ---
 @login_required
 @require_http_methods(["POST"])
 def save_schedule(request):
@@ -263,15 +409,21 @@ def save_schedule(request):
         
         schedule_data = {}
         for i in range(7):
-            start_key = f'start_{i}'; end_key = f'end_{i}'; start_time = request.POST.get(start_key, '00:00'); end_time = request.POST.get(end_key, '00:00')
+            start_key = f'start_{i}'
+            end_key = f'end_{i}'
+            start_time = request.POST.get(start_key, '00:00')
+            end_time = request.POST.get(end_key, '00:00')
             schedule_data[i] = {'start': start_time, 'end': end_time}
         
         user_profile.set_weekly_schedule(schedule_data)
         
         burnout_threshold = request.POST.get('burnout_threshold')
         if burnout_threshold:
-            try: user_profile.burnout_threshold = int(burnout_threshold); user_profile.save()
-            except ValueError: pass
+            try:
+                user_profile.burnout_threshold = int(burnout_threshold)
+                user_profile.save()
+            except ValueError:
+                pass
         return redirect('home')
         
     except Exception as e:
