@@ -1,5 +1,10 @@
+# nixpacks.toml
+
+[phases.build]
+# Instalamos las dependencias de sistema (librerías C/C++) necesarias 
+# para que librerías como psycopg2, pycairo y otras se puedan compilar.
 cmds = [
     "apk update",
-    "apk add build-base cairo-dev freetype-dev pkgconf",
-    # El proceso de Railpack ejecutará pip install después de esto.
+    "apk add build-base cairo-dev freetype-dev pkgconf libffi-dev musl-dev",
+    # El proceso de Railpack ejecutará pip install DESPUÉS de esto.
 ]
