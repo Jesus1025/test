@@ -1,0 +1,318 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Flow Optimizer - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f4f7f9; }
+        .card { transition: all 0.3s ease-in-out; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .card:hover { box-shadow: 0 10px 15px rgba(0, 0, 0, 0.15); transform: translateY(-2px); }
+        .burnout-alert { background-color: #fee2e2; border-left: 5px solid #ef4444; color: #b91c1c; }
+        .low-effort { background-color: #d1fae5; border-left: 5px solid #10b981; color: #065f46; }
+        .schedule-info { font-size: 0.9rem; color: #6b7280; }
+        .day-input { width: 80px; }
+        .today-row { background-color: #eef2ff; }
+        .modal-overlay { transition: opacity 0.3s ease; }
+        /* Estilo para que el botón de logout parezca un enlace */
+        .logout-button { background: none; border: none; padding: 0; color: #4f46e5; text-decoration: underline; cursor: pointer; }
+        .logout-button:hover { color: #3730a3; }
+        
+        /* ESTILOS PARA LAS ESTRELLAS */
+        .star {
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            animation: fadeIn 0.5s ease-in-out;
+            pointer-events: none;
+        }
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: scale(0.8); } 
+            to { opacity: 1; transform: scale(1); } 
+        }
+    </style>
+</head>
+<body class="relative">
+    <div class="min-h-screen p-4 sm:p-8">
+        <header class="text-center mb-4 relative pt-12"> 
+            <div class="absolute top-0 right-0 p-4 text-sm text-gray-600 flex items-center space-x-2">
+                {% if user.is_authenticated %}
+                    <span>Hola, {{ user.username }}!</span>
+                    <span>|</span>
+                    <form action="{% url 'logout' %}" method="post" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="logout-button">Cerrar Sesión</button>
+                    </form>
+                {% else %}
+                    <a href="{% url 'login' %}" class="text-indigo-600 hover:text-indigo-800">Iniciar Sesión</a>
+                    <span>|</span>
+                    <a href="{% url 'register' %}" class="text-indigo-600 hover:text-indigo-800">Registrarse</a>
+                {% endif %}
+            </div>
+
+            <h1 class="text-4xl font-extrabold text-indigo-700">Task Flow Optimizer</h1>
+            <p class="text-lg text-gray-500 mt-2">Planificador Semanal Inteligente</p>
+        </header>
+
+        {% if user.is_authenticated %} {# Mostrar contenido solo si está logueado #}
+
+            <!-- BLOQUE DE PROGRESO INSERTADO AQUÍ -->
+            <div class="max-w-md mx-auto mb-4 card bg-gray-800 text-white p-6 rounded-xl border border-gray-700 text-center">
+                <h3 class="text-xl font-semibold text-white mb-3">Tu Progreso</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-lg font-bold text-indigo-400">Racha Diaria</p>
+                        <p><span class="text-2xl text-white">{{ current_streak }}</span> día{{ current_streak|pluralize:"s" }}</p>
+                        {% if current_streak == 0 %}
+                            <p class="text-xs text-gray-300 mt-1">¡Completa una tarea hoy!</p>
+                        {% else %}
+                            <p class="text-xs text-gray-300 mt-1">¡Sigue así!</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <p class="text-lg font-bold text-yellow-400">Estrellas del Mes</p>
+                        <p><span class="text-2xl text-white">{{ monthly_completed_tasks }}</span></p>
+                        <p class="text-xs text-gray-300 mt-1">Tareas completadas este mes</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="max-w-4xl mx-auto mb-8">
+                {% if message %}
+                    <div class="p-4 mb-4 rounded-lg
+                        {% if 'Error' in message or 'API_ERROR' in message %} burnout-alert
+                        {% else %} low-effort {% endif %}
+                        " role="alert">
+                        <p class="font-medium text-sm sm:text-base">{{ message }}</p>
+                    </div>
+                {% endif %}
+
+                <div class="bg-white card p-6 rounded-xl border border-gray-100">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-semibold text-gray-800">Estado del Día</h2>
+                    </div>
+                     <div class="grid sm:grid-cols-2 gap-4">
+                        <div class="flex items-center">
+                            <span class="text-gray-500 mr-2">Fecha:</span>
+                            <span class="font-bold text-gray-800">{{ today_date }} ({{ today_schedule.name }})</span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="text-gray-500 mr-2">Jornada de Hoy (Default):</span>
+                            {% if today_schedule.start == '00:00' and today_schedule.end == '00:00' %}
+                                <span class="schedule-info font-bold text-green-700">Día Libre</span>
+                            {% else %}
+                                <span class="schedule-info font-bold text-indigo-700">{{ today_schedule.start }} - {{ today_schedule.end }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if accumulated_effort >= burnout_threshold %}
+                         <div class="mt-4 p-3 rounded-lg burnout-alert">
+                            <p class="font-bold">¡Alerta de Burnout! Esfuerzo Actual: {{ accumulated_effort }}</p>
+                            <p class="text-sm">El umbral máximo es {{ burnout_threshold }}.</p>
+                        </div>
+                    {% else %}
+                        <div class="mt-4 p-3 rounded-lg low-effort">
+                            <p class="font-bold">Esfuerzo Acumulado Hoy: {{ accumulated_effort }} / {{ burnout_threshold }}</p>
+                            <p class="text-sm">Tienes espacio para tareas de hasta {{ available_effort }} puntos de esfuerzo.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="max-w-4xl mx-auto mb-8 bg-white card p-6 rounded-xl border border-gray-100">
+                 <h2 class="text-2xl font-semibold text-indigo-700 mb-4">Ingresar Nueva Tarea</h2>
+                <form method="POST" action="{% url 'home' %}">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label for="new_task_text" class="block text-gray-700 font-medium mb-2">Descripción (Ej: Estudiar Python / Concierto Bad Bunny el sábado 8pm):</label>
+                        <input type="text" id="new_task_text" name="new_task_text" required
+                               placeholder="Describe la tarea o evento..."
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                        Optimizar y Programar con Gemini
+                    </button>
+                </form>
+            </div>
+
+            <div class="max-w-7xl mx-auto mb-8">
+                <div class="flex justify-between items-center mb-6 px-2">
+                    <h2 class="text-3xl font-extrabold text-gray-800">Planificador Semanal</h2>
+                    <a href="{% url 'delete_completed' %}"
+                       class="text-sm bg-red-100 text-red-700 font-medium py-2 px-4 rounded-lg hover:bg-red-200 transition duration-200 flex-shrink-0"
+                       onclick="return confirm('¿Estás seguro de que quieres eliminar TODAS las tareas completadas?');">
+                       Limpiar Completadas
+                    </a>
+                </div>
+                <div class="flex flex-nowrap gap-5 overflow-x-auto pb-4">
+                    {% for day in week_view_data %}
+                     <div class="bg-white p-5 rounded-xl border w-80 flex-shrink-0
+                        {% if day.is_today %} border-indigo-400 border-2 {% else %} border-gray-100 shadow-lg {% endif %}
+                    ">
+                        <div class="mb-4">
+                             <div class="flex justify-between items-center">
+                                <h3 class="text-xl font-bold
+                                    {% if day.is_today %} text-indigo-700 {% else %} text-gray-800 {% endif %}">
+                                    {{ day.day_name }}
+                                </h3>
+                                {% if day.is_today %}
+                                    <span class="text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">HOY</span>
+                                {% endif %}
+                            </div>
+                            <p class="text-sm text-gray-500">{{ day.date_str }}</p>
+                            <div class="mt-2">
+                                <span class="text-sm font-medium text-gray-600">
+                                    Esfuerzo: {{ day.accumulated_effort }} / {{ burnout_threshold }}
+                                </span>
+                                <div class="w-full bg-gray-200 rounded-full h-2 mt-1">
+                                    <div class="h-2 rounded-full
+                                        {% if day.accumulated_effort > burnout_threshold %} bg-red-500
+                                        {% elif day.accumulated_effort > 10 %} bg-yellow-400
+                                        {% else %} bg-green-500 {% endif %}"
+                                        style="width: {% widthratio day.accumulated_effort burnout_threshold 100 %}%">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% if day.tasks %}
+                             <ul class="space-y-3">
+                                {% for task in day.tasks %}
+                                <li class="flex items-center p-3 border rounded-lg
+                                    {% if task.completed %} bg-gray-50 border-gray-200
+                                    {% else %} bg-white border-gray-200 {% endif %}">
+                                    <a href="{% url 'toggle_task' task.id %}" class="flex-grow flex items-center cursor-pointer group">
+                                        <input type="checkbox" id="task-{{ task.id }}"
+                                               {% if task.completed %} checked {% endif %}
+                                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded mr-3 pointer-events-none">
+                                        <label for="task-{{ task.id }}" class="flex-grow cursor-pointer
+                                            {% if task.completed %} line-through text-gray-500
+                                            {% else %} text-gray-800 group-hover:text-indigo-700 {% endif %}">
+                                            {{ task.text }}
+                                        </label>
+                                    </a>
+                                    <div class="flex items-center space-x-2 flex-shrink-0 ml-2">
+                                        <span class="hidden sm:inline-block text-xs font-semibold px-2 py-1 rounded-full bg-indigo-100 text-indigo-800 whitespace-nowrap">
+                                            {{ task.time }} - {{ task.end_time }}
+                                        </span>
+                                        <span class="text-xs font-semibold px-2 py-1 rounded-full
+                                            {% if task.effort >= 4 %} bg-red-200 text-red-800
+                                            {% elif task.effort >= 2 %} bg-yellow-200 text-yellow-800
+                                            {% else %} bg-green-200 text-green-800 {% endif %}">
+                                            E: {{ task.effort }}
+                                        </span>
+                                    </div>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-gray-500 italic text-sm">No hay tareas programadas.</p>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- NUEVO DISEÑO SEPARADO: TEXTO + IMAGEN -->
+            <div class="max-w-7xl mx-auto mb-4 card bg-gray-800 text-white p-6 rounded-xl border border-gray-700 text-center">
+                <h3 class="text-xl font-semibold text-white mb-3">Tu Constelación Diaria</h3>
+                <p class="text-lg font-bold text-indigo-400">
+                    Racha actual: <span class="text-2xl text-white">{{ current_streak }}</span> día{{ current_streak|pluralize:"s" }}
+                </p>
+                {% if current_streak == 0 %}
+                    <p class="text-sm text-gray-300 mt-2">¡Completa una tarea hoy para empezar!</p>
+                {% elif is_reward_day %}
+                     <p class="text-sm text-yellow-300 mt-2 font-semibold">¡Felicidades! ¡Nueva constelación descubierta!</p>
+                {% else %}
+                     <p class="text-sm text-gray-300 mt-2">¡Sigue así!</p>
+                {% endif %}
+            </div>
+
+            <!-- CONTENEDOR DE IMAGEN QUE OCUPA TODO EL ESPACIO HACIA LOS LADOS -->
+            <div class="mb-8 streak-image-container relative w-full bg-black rounded-xl border border-gray-700 overflow-hidden" style="min-height: 400px;">
+                {% if is_reward_day and reward_image_url %}
+                    <!-- CAMBIO 1: Usar reward_image_url para días de recompensa -->
+                    <img src="{% static reward_image_url %}" alt="Recompensa de Racha" 
+                         class="w-full h-full object-cover">
+                {% else %}
+                    <!-- CAMBIO 2: Usar static_background_url para días normales -->
+                    <img src="{% static static_background_url %}" alt="Fondo Racha" 
+                         class="w-full h-full object-cover opacity-70">
+                    
+                    <div id="stars-container" class="absolute inset-0 w-full h-full pointer-events-none">
+                        <!-- Las estrellas se insertarán aquí dinámicamente con JavaScript -->
+                    </div>
+                {% endif %}
+            </div>
+
+        {% else %} {# Si no está logueado... #}
+            <div class="max-w-md mx-auto mt-10 text-center bg-white p-6 rounded-lg shadow">
+                <p class="text-lg text-gray-700">Por favor, <a href="{% url 'login' %}" class="text-indigo-600 hover:text-indigo-800">inicia sesión</a> o <a href="{% url 'register' %}" class="text-indigo-600 hover:text-indigo-800">regístrate</a> para usar el planificador.</p>
+            </div>
+        {% endif %}
+
+    </div> 
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("DOM Cargado. Inicializando script de estrellas.");
+
+            // Datos pasados desde Django
+            const starsToShow = parseInt("{{ stars_to_show|default:0 }}");
+            const isRewardDay = "{{ is_reward_day }}" === "True";
+            const starImageBaseUrl = "{% static star_image_base_url %}"; // Ej: /static/core/images/estrella
+            const starsContainer = document.getElementById('stars-container');
+
+            console.log("Datos para estrellas:", { starsToShow, isRewardDay, starImageBaseUrl });
+
+            // Verificar si el contenedor existe ANTES de intentar usarlo
+            if (!starsContainer) {
+                console.error("El contenedor de estrellas ('stars-container') no fue encontrado en el HTML.");
+                return; // Salir si no hay contenedor
+            }
+
+            // Limpiar estrellas anteriores ANTES del bucle
+            starsContainer.innerHTML = '';
+            console.log("Contenedor de estrellas limpiado.");
+
+            // Solo añadir estrellas si NO es día de recompensa y hay estrellas que mostrar
+            if (!isRewardDay && starsToShow > 0 && starImageBaseUrl) {
+                console.log(`Intentando añadir ${starsToShow} estrellas...`);
+
+                for (let i = 0; i < starsToShow; i++) {
+                    const starImg = document.createElement('img');
+
+                    // Elegir aleatoriamente entre estrella1.png a estrella4.png
+                    const starNum = Math.floor(Math.random() * 4) + 1; // Número aleatorio 1-4
+                    const starSrc = `${starImageBaseUrl}${starNum}.png`; // Construir URL completa
+                    console.log(` Estrella ${i+1}: Usando ${starSrc}`); // Log de la imagen usada
+
+                    starImg.src = starSrc;
+                    starImg.alt = 'estrella';
+                    starImg.classList.add('star'); // Aplica la clase CSS
+
+                    // Calcular posición aleatoria (porcentaje)
+                    const randomTop = Math.random() * 90 + 5; // Evita bordes (5% a 95%)
+                    const randomLeft = Math.random() * 90 + 5; // Evita bordes (5% a 95%)
+
+                    starImg.style.top = `${randomTop}%`;
+                    starImg.style.left = `${randomLeft}%`;
+
+                    // Añadir la estrella al contenedor
+                    starsContainer.appendChild(starImg);
+                }
+                 console.log(starsToShow + " estrellas añadidas al contenedor.");
+            } else if (!starImageBaseUrl && !isRewardDay && starsToShow > 0) {
+                 console.error("La URL base de la imagen de estrella (starImageBaseUrl) no está definida o es incorrecta.");
+            } else if (isRewardDay) {
+                 console.log("No se añadirán estrellas (Día de recompensa).");
+            } else {
+                 console.log("No se añadirán estrellas (starsToShow es 0).");
+            }
+
+        }); // Fin del DOMContentLoaded listener
+    </script>
+
+</body>
+</html>

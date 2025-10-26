@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Registro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilo simple para los párrafos del formulario */
+        form p { margin-bottom: 1rem; }
+        form label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+        form input[type="text"], form input[type="password"], form input[type="email"] {
+             width: 100%; padding: 0.5rem; border: 1px solid #d2d6dc; border-radius: 0.375rem; }
+        .helptext { font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; }
+        ul.errorlist { list-style: none; padding: 0; color: #ef4444; font-size: 0.875rem; margin-top: -0.5rem; margin-bottom: 0.5rem;}
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen py-12">
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
+        <h2 class="text-2xl font-bold mb-6 text-center text-indigo-600">Crear Cuenta</h2>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }} {# Renderiza el formulario de registro de Django como párrafos #}
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full mt-4">
+                Registrarse
+            </button>
+        </form>
+         <p class="text-center text-gray-500 text-xs mt-6">
+            ¿Ya tienes cuenta? <a href="{% url 'login' %}" class="text-indigo-600 hover:text-indigo-800">Inicia sesión</a>.
+        </p>
+    </div>
+</body>
+</html>

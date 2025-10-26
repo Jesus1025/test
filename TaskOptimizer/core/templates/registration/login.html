@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Iniciar Sesión</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
+        <h2 class="text-2xl font-bold mb-6 text-center text-indigo-600">Iniciar Sesión</h2>
+        {% if form.errors %}
+            <p class="text-red-500 text-sm mb-4">Tu usuario o contraseña no son correctos. Inténtalo de nuevo.</p>
+        {% endif %}
+        {% if next %}
+            {% if user.is_authenticated %}
+            <p class="text-red-500 text-sm mb-4">Tu cuenta no tiene acceso a esta página. Para proceder, por favor inicia sesión con una cuenta que tenga acceso.</p>
+            {% else %}
+            <p class="text-yellow-600 text-sm mb-4">Por favor, inicia sesión para ver esta página.</p>
+            {% endif %}
+        {% endif %}
+
+        <form method="post" action="{% url 'login' %}">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label for="id_username" class="block text-gray-700 text-sm font-bold mb-2">Usuario:</label>
+                <input type="text" name="username" autofocus autocapitalize="none" autocomplete="username" maxlength="150" required id="id_username"
+                       class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+            </div>
+            <div class="mb-6">
+                <label for="id_password" class="block text-gray-700 text-sm font-bold mb-2">Contraseña:</label>
+                <input type="password" name="password" autocomplete="current-password" required id="id_password"
+                       class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+            <div class="flex items-center justify-between">
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full">
+                    Entrar
+                </button>
+            </div>
+            <input type="hidden" name="next" value="{{ next }}">
+        </form>
+        <p class="text-center text-gray-500 text-xs mt-6">
+            ¿No tienes cuenta? <a href="{% url 'register' %}" class="text-indigo-600 hover:text-indigo-800">Regístrate aquí</a>.
+        </p>
+    </div>
+</body>
+</html>
