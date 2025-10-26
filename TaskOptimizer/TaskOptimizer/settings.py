@@ -22,7 +22,7 @@ SECRET_KEY = 'django-insecure-tu_clave_secreta_aqui'
 DEBUG = False # Cambiar a False en producción
 
 # En producción, añade tu dominio aquí (ej: ['www.tusitio.com'])
-ALLOWED_HOSTS = ['.up.railway.app', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['web-production-631b1.up.railway.app', 'localhost', '127.0.0.1']
 
 
 # Application definition
@@ -117,4 +117,4 @@ LOGIN_REDIRECT_URL = '/' # A dónde ir después de iniciar sesión
 LOGOUT_REDIRECT_URL = '/' # A dónde ir después de cerrar sesión
 LOGIN_URL = 'login' # Nombre de la URL de login (definida por django.contrib.auth.urls)
 
-CSRF_TRUSTED_ORIGINS = ['https://*.up.railway.app']
+CSRF_TRUSTED_ORIGINS = ['web-production-631b1.up.railway.app']
