@@ -1,0 +1,5 @@
+cmds = [
+    "apk update",
+    "apk add build-base cairo-dev freetype-dev pkgconf",
+    # El proceso de Railpack ejecutará pip install después de esto.
+]
